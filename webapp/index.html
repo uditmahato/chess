@@ -27,6 +27,10 @@
     --black-edge: #050403;
   }
   * { box-sizing: border-box; }
+  /* Always reserve the vertical scrollbar so the viewport width never changes
+     when the move list / captured bars grow — otherwise the board (sized from
+     vw/vh) would resize and the squares would "jump" on every move. */
+  html { scrollbar-gutter: stable; overflow-y: scroll; }
   html, body { height: 100%; }
   body {
     margin: 0;
