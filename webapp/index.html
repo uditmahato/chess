@@ -219,6 +219,16 @@
     </div>
   </div>
 
+  <div class="modal hidden" id="seatPick">
+    <div class="card">
+      <h2>Which side are you?</h2>
+      <p class="hint-text" style="margin:-4px 0 2px">Pick your side so the board faces you. Your moves stay in sync with the other player.</p>
+      <button class="primary" id="seatW">Play as <b id="seatWName">White</b> &nbsp;♔</button>
+      <button id="seatB">Play as <b id="seatBName">Black</b> &nbsp;♚</button>
+      <button id="seatSpectate">Just watching</button>
+    </div>
+  </div>
+
   <header>
     <h1>♟ Chess Engine — live test board</h1>
     <p>Every move drives the real Python engine (FIDE rules).</p>
@@ -294,6 +304,10 @@ let showHints = (localStorage.getItem("chessHints") ?? "1") === "1";
 let appliedVersion = -1;
 let clockBase = { w: null, b: null }, clockAt = 0, running = null, timed = false;
 let playersState = { w: "White", b: "Black" }, timeoutPolled = false, p1Color = "w";
+// Which side THIS device is playing: "w", "b", "spec", or null (not chosen).
+// The board is oriented so this device's colour is at the bottom.
+let seat = localStorage.getItem("chessSeat") || null;
+if (seat === "b") flipped = true;
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
@@ -492,6 +506,7 @@ async function poll() {
     if (typeof s.version === "number" && s.version !== appliedVersion) {
       selected = null;                    // the board changed under us
       setState(s);
+      maybeAskSeat();                     // a game may have just been set up
     }
   } catch (e) { /* ignore transient network errors */ }
 }
@@ -566,18 +581,44 @@ $("startGame").addEventListener("click", async () => {
   const v = $("tc").value;
   if (v === "custom") { minutes = parseFloat($("tcMin").value) || 0; increment = parseFloat($("tcInc").value) || 0; }
   else { const p = v.split("+").map(Number); minutes = p[0] || 0; increment = p[1] || 0; }
+  // The host is Player 1, so this device takes Player 1's colour and orients.
+  setSeat(p1Color);
   closeSetup(); selected = null; pendingPromo = null; renderPromo();
   setState(await api("/api/new", { white, black, minutes, increment }));
 });
 $("cancelSetup").addEventListener("click", closeSetup);
 
+// ---- Seat picker (which side this device plays / views from) ----
+function setSeat(c) {
+  seat = c;
+  if (c) localStorage.setItem("chessSeat", c); else localStorage.removeItem("chessSeat");
+  if (c === "w") flipped = false;
+  else if (c === "b") flipped = true;
+  $("seatPick").classList.add("hidden");
+  if (state) { render(); renderPlayers(); }
+}
+function maybeAskSeat() {
+  if (seat || !state) return;
+  const s = state;
+  const configured = s.timed || (s.history && s.history.length)
+    || s.players.w !== "White" || s.players.b !== "Black";
+  if (!configured) return;                 // nothing set up yet — no need to ask
+  $("seatWName").textContent = s.players.w;
+  $("seatBName").textContent = s.players.b;
+  $("seatPick").classList.remove("hidden");
+}
+$("seatW").addEventListener("click", () => setSeat("w"));
+$("seatB").addEventListener("click", () => setSeat("b"));
+$("seatSpectate").addEventListener("click", () => setSeat("spec"));
+
 syncHintsBtn();
 loadShare();
 (async () => {
   setState(await api("/api/state"));
-  // On a brand-new, unconfigured server, prompt the host to set up the game.
-  if (!state.history.length && !state.timed
-      && state.players.w === "White" && state.players.b === "Black") openSetup();
+  const fresh = !state.history.length && !state.timed
+      && state.players.w === "White" && state.players.b === "Black";
+  if (fresh && !seat) openSetup();   // host: configure a new game
+  else maybeAskSeat();               // joiner: pick your side so it faces you
 })();
 </script>
 </body>
