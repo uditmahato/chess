@@ -36,13 +36,18 @@
   header p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
 
   .app { flex: 1; display: flex; gap: 20px; padding: 8px 18px 22px;
-         align-items: stretch; justify-content: center; }
+         align-items: flex-start; justify-content: center; }
 
-  /* ---- Board column ---- */
-  .board-col { display: flex; flex-direction: column; gap: 8px; }
+  /* ---- Board column ----
+     The column takes the space left over after the fixed-width panel and can
+     shrink (min-width:0), so the board never pushes the panel off-screen.
+     --bsize keeps the board and the captured bars exactly the same width. */
+  .board-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+               align-items: center; gap: 8px;
+               --bsize: min(100%, calc(100dvh - 150px), 720px); }
   .board {
     position: relative;
-    width: min(calc(100dvh - 150px), calc(100vw - 400px), 860px);
+    width: var(--bsize);
     aspect-ratio: 1 / 1;
     display: grid; grid-template-columns: repeat(8, 1fr);
     border-radius: 4px; overflow: hidden;
@@ -75,7 +80,7 @@
   .banner .small { font-size: 13px; color: var(--muted); margin-top: 6px; }
   .banner button { margin-top: 16px; min-width: 160px; }
 
-  .cap { display: flex; align-items: center; gap: 8px; min-height: 30px;
+  .cap { width: var(--bsize); display: flex; align-items: center; gap: 8px; min-height: 30px;
          padding: 3px 10px; border-radius: 6px; background: var(--bg1); }
   .cap .who { font-size: 10px; color: var(--muted); text-transform: uppercase;
               letter-spacing: .5px; font-weight: 700; width: 42px; }
@@ -130,7 +135,7 @@
 
   @media (max-width: 900px) {
     .app { flex-direction: column; align-items: center; }
-    .board { width: min(94vw, calc(100dvh - 300px)); }
+    .board-col { flex: 0 0 auto; width: 100%; --bsize: min(94vw, calc(100dvh - 300px)); }
     .panel { width: min(94vw, 420px); max-height: none; }
   }
 </style>
