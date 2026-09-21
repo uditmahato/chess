@@ -1,0 +1,14 @@
+Chess piece SVG images (wK, wQ, wR, wB, wN, wP, bK, bQ, bR, bB, bN, bP)
+=======================================================================
+
+These piece graphics are the widely-used "cburnett" chess set by
+Colin M. L. Burnett, obtained from Wikimedia Commons
+(https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces).
+
+They are multi-licensed by the author under:
+  - GNU General Public License v2 or later, and
+  - GNU Free Documentation License, and
+  - BSD 3-clause License.
+
+This project uses them under the BSD 3-clause License; the author's
+copyright notice is retained here as required. The images are unmodified.

@@ -114,6 +114,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    _CTYPES = {
+        ".html": "text/html; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".css": "text/css",
+        ".js": "application/javascript",
+        ".png": "image/png",
+    }
+
     def _send_file(self, path):
         try:
             with open(path, "rb") as fh:
@@ -121,12 +129,24 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             self.send_error(404)
             return
-        ctype = "text/html" if path.endswith(".html") else "application/octet-stream"
+        ext = os.path.splitext(path)[1].lower()
+        ctype = self._CTYPES.get(ext, "application/octet-stream")
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "max-age=86400")
         self.end_headers()
         self.wfile.write(body)
+
+    def _serve_static(self, rel_path: str) -> bool:
+        """Safely serve a file from the webapp directory. Returns True if sent."""
+        rel_path = rel_path.lstrip("/")
+        full = os.path.normpath(os.path.join(WEBAPP, rel_path))
+        # Prevent path traversal outside the webapp directory.
+        if not full.startswith(WEBAPP) or not os.path.isfile(full):
+            return False
+        self._send_file(full)
+        return True
 
     @staticmethod
     def _parse_uci(uci: str):
@@ -153,6 +173,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_file(os.path.join(WEBAPP, "index.html"))
         elif path == "/api/state":
             self._send_json(state_dict())
+        elif self._serve_static(path):
+            return
         else:
             self.send_error(404)
 
