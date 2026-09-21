@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chess Engine — Play</title>
+<style>
+  :root {
+    --light: #f0d9b5;
+    --dark: #b58863;
+    --sel: #f7ec74;
+    --dot: rgba(20,20,20,0.28);
+    --last: rgba(247,236,116,0.55);
+    --check: #ff5b5b;
+    --bg0: #1c2128;
+    --bg1: #262c36;
+    --panel: #2d333b;
+    --panel2: #21262d;
+    --line: #3a414b;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #6ea043;
+    --accent-d: #57813a;
+    --white-fill: #fbfbf7;
+    --white-edge: #33302b;
+    --black-fill: #2a2622;
+    --black-edge: #050403;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 700px at 50% -10%, #2a3140, var(--bg0));
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 22px 16px 40px; gap: 18px;
+  }
+  header { text-align: center; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+
+  .app { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+
+  /* ---- Board ---- */
+  .board-col { display: flex; flex-direction: column; gap: 10px; }
+  .board-shell { position: relative; border-radius: 10px; padding: 10px;
+    background: linear-gradient(160deg, #4a3728, #3a2c20);
+    box-shadow: 0 18px 40px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.04); }
+  .board {
+    position: relative;
+    display: grid; grid-template-columns: repeat(8, 1fr);
+    /* Fit both width and height so the side panel is never pushed off-screen. */
+    width: min(86vw, 74vh, 520px); aspect-ratio: 1 / 1;
+    border-radius: 5px; overflow: hidden;
+    touch-action: manipulation; user-select: none;
+  }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center; }
+  .sq.light { background: var(--light); }
+  .sq.dark  { background: var(--dark); }
+  .sq.sel::after { content:""; position:absolute; inset:0; background: var(--sel); opacity:.55; }
+  .sq.last::before { content:""; position:absolute; inset:0; background: var(--last); }
+  .sq.check { box-shadow: inset 0 0 0 4px var(--check); }
+  .sq.hint { cursor: pointer; }
+  .piece {
+    position: relative; z-index: 2;
+    font-size: min(11vw, 42px); line-height: 1;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.22));
+    transition: transform .05s;
+  }
+  .piece.w { color: var(--white-fill); -webkit-text-stroke: 1.1px var(--white-edge); }
+  .piece.b { color: var(--black-fill); -webkit-text-stroke: 1px var(--black-edge); }
+  .dot { position: absolute; z-index: 1; width: 30%; height: 30%; border-radius: 50%; background: var(--dot); }
+  .dot.capture { width: 84%; height: 84%; background: transparent; border: 6px solid var(--dot); }
+  .coord { position: absolute; font-size: 10px; font-weight: 700; z-index: 3; opacity: .7; }
+  .coord.file { right: 4px; bottom: 2px; }
+  .coord.rank { left: 4px; top: 2px; }
+  .sq.light .coord { color: #b58863; }
+  .sq.dark .coord { color: #f0d9b5; }
+
+  .banner {
+    position: absolute; inset: 10px; border-radius: 5px; z-index: 5;
+    display: none; align-items: center; justify-content: center; flex-direction: column;
+    background: rgba(12,14,18,.72); backdrop-filter: blur(2px); text-align: center; padding: 20px;
+  }
+  .banner.show { display: flex; }
+  .banner .big { font-size: 26px; font-weight: 750; }
+  .banner .small { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .banner button { margin-top: 16px; }
+
+  /* captured material bars */
+  .cap { display: flex; align-items: center; gap: 8px; min-height: 30px;
+         padding: 4px 10px; border-radius: 8px;
+         background: var(--bg1); border: 1px solid var(--line); }
+  .cap .who { font-size: 10.5px; color: var(--muted); text-transform: uppercase;
+              letter-spacing: .5px; font-weight: 600; white-space: nowrap; }
+  .cap .pcs { display: flex; align-items: center; gap: 1px; font-size: 17px; min-height: 18px; }
+  .cap .pcs .piece { filter: none; }
+  .cap .adv { margin-left: auto; font-size: 12px; color: var(--accent); font-weight: 700; }
+
+  /* ---- Panel ---- */
+  .panel { width: min(90vw, 300px); background: var(--panel); border: 1px solid var(--line);
+           border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 14px;
+           box-shadow: 0 12px 30px rgba(0,0,0,.3); }
+  .turn { display: flex; align-items: center; gap: 10px; }
+  .turn .swatch { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #000;
+                  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .turn.black .swatch { background: #222; border-color:#000; }
+  .turn .label { font-size: 16px; font-weight: 650; }
+  .turn .chk { color: var(--check); font-weight: 700; font-size: 13px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; }
+  .badge { background: var(--panel2); border: 1px solid var(--line); border-radius: 20px;
+           padding: 3px 10px; font-size: 11px; color: var(--muted); }
+  .badge.hl { color: #fff; border-color: var(--accent); }
+  .notice { font-size: 12px; color: #ffd48a; min-height: 0; }
+  .notice:empty { display: none; }
+  .err { color: #ff9c8f; font-size: 12px; }
+  .err:empty { display: none; }
+
+  .moves-wrap { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .moves-head { background: var(--panel2); padding: 6px 10px; font-size: 11px; color: var(--muted);
+                text-transform: uppercase; letter-spacing: .6px; }
+  .moves { max-height: 168px; overflow-y: auto; font-variant-numeric: tabular-nums; }
+  .moves table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .moves td { padding: 3px 8px; }
+  .moves td.n { color: var(--muted); width: 30px; text-align: right; }
+  .moves tr:nth-child(even) { background: rgba(255,255,255,.02); }
+  .moves .san { cursor: default; }
+  .moves .empty { padding: 12px; color: var(--muted); font-size: 12px; text-align: center; }
+
+  .promo { display: none; grid-template-columns: repeat(4,1fr); gap: 6px;
+           background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .promo.active { display: grid; }
+  .promo .pl { font-size: 11px; color: var(--muted); grid-column: 1/-1; }
+  .promo button { font-size: 24px; padding: 6px 0; line-height: 1; }
+  .promo button .w { color: var(--white-fill); -webkit-text-stroke: 1.4px var(--white-edge); }
+  .promo button .b { color: var(--black-fill); -webkit-text-stroke: 1.2px var(--black-edge); }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+           border-radius: 8px; padding: 9px 12px; font-size: 13px; cursor: pointer; flex: 1;
+           transition: background .12s, border-color .12s; font-weight: 550; }
+  button:hover:not(:disabled) { background: #363d47; border-color: #4b535e; }
+  button.primary { background: var(--accent); border-color: var(--accent-d); color: #0f1a08; font-weight: 700; }
+  button.primary:hover:not(:disabled) { background: #7cb04d; }
+  button:disabled { opacity: .38; cursor: default; }
+  .section-label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin: 2px 0 -6px; }
+  .hint-text { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>♟ Chess Engine — live test board</h1>
+    <p>Every move drives the real Python engine (FIDE rules). Try castling, en passant, promotion, threefold, stalemate…</p>
+  </header>
+
+  <div class="app">
+    <div class="board-col">
+      <div class="cap" id="capTop"></div>
+      <div class="board-shell">
+        <div id="board" class="board"></div>
+        <div id="banner" class="banner">
+          <div class="big" id="bannerBig"></div>
+          <div class="small" id="bannerSmall"></div>
+          <button class="primary" id="bannerNew">New game</button>
+        </div>
+      </div>
+      <div class="cap" id="capBot"></div>
+    </div>
+
+    <div class="panel">
+      <div class="turn" id="turn">
+        <span class="swatch"></span>
+        <span class="label" id="turnLabel">White to move</span>
+        <span class="chk" id="chk"></span>
+      </div>
+      <div class="meta" id="meta"></div>
+      <div class="notice" id="notice"></div>
+      <div class="err" id="err"></div>
+
+      <div class="promo" id="promo">
+        <div class="pl">Promote to:</div>
+      </div>
+
+      <div class="moves-wrap">
+        <div class="moves-head">Moves</div>
+        <div class="moves" id="moves"><div class="empty">No moves yet</div></div>
+      </div>
+
+      <div class="section-label">Game</div>
+      <div class="row">
+        <button id="newGame" class="primary">New game</button>
+        <button id="flip">Flip</button>
+      </div>
+      <div class="row">
+        <button id="resign">Resign</button>
+      </div>
+
+      <div class="section-label">Draws</div>
+      <div class="row">
+        <button id="claim3" disabled>Claim 3-fold</button>
+        <button id="claim50" disabled>Claim 50-move</button>
+      </div>
+      <div class="row">
+        <button id="offer">Offer draw</button>
+        <button id="accept" disabled>Accept</button>
+        <button id="decline" disabled>Decline</button>
+      </div>
+      <div class="hint-text">Click a piece, then a highlighted square.</div>
+    </div>
+  </div>
+
+<script>
+const SOLID = { k:"♚", q:"♛", r:"♜", b:"♝", n:"♞", p:"♟" };
+const VAL = { p:1, n:3, b:3, r:5, q:9 };
+const FILES = "abcdefgh";
+let state = null, selected = null, flipped = false, pendingPromo = null;
+
+const $ = id => document.getElementById(id);
+const boardEl = $("board");
+
+function sqName(f, r) { return FILES[f] + (r + 1); }
+function idxOf(f, r) { return r * 8 + f; }
+
+async function api(path, body) {
+  const opt = { method: body ? "POST" : "GET" };
+  if (body) { opt.headers = { "Content-Type": "application/json" }; opt.body = JSON.stringify(body); }
+  return (await fetch(path, opt)).json();
+}
+
+function pieceGlyph(piece) {
+  const cls = piece === piece.toUpperCase() ? "w" : "b";
+  const span = document.createElement("span");
+  span.className = "piece " + cls;
+  span.textContent = SOLID[piece.toLowerCase()];
+  return span;
+}
+
+function legalTargetsFrom(from) {
+  const map = {};
+  for (const uci of state.legal)
+    if (uci.slice(0, 2) === from) { const to = uci.slice(2, 4); map[to] = map[to] || uci.length > 4; }
+  return map;
+}
+
+function render() {
+  boardEl.innerHTML = "";
+  const targets = selected ? legalTargetsFrom(selected) : {};
+  const ranks = flipped ? [...Array(8).keys()] : [...Array(8).keys()].reverse();
+  const files = flipped ? [...Array(8).keys()].reverse() : [...Array(8).keys()];
+  for (const r of ranks) for (const f of files) {
+    const name = sqName(f, r);
+    const piece = state.board[idxOf(f, r)];
+    const el = document.createElement("div");
+    el.className = "sq " + ((f + r) % 2 === 0 ? "dark" : "light");
+    if (selected === name) el.classList.add("sel");
+    if (state.last_move && (state.last_move.frm === name || state.last_move.to === name)) el.classList.add("last");
+    if (state.check_square === name) el.classList.add("check");
+    if (name in targets || state.legal.some(u => u.slice(0,2) === name)) el.classList.add("hint");
+
+    if (f === (flipped ? 7 : 0)) { const c = document.createElement("span"); c.className = "coord rank"; c.textContent = r + 1; el.appendChild(c); }
+    if (r === (flipped ? 7 : 0)) { const c = document.createElement("span"); c.className = "coord file"; c.textContent = FILES[f]; el.appendChild(c); }
+    if (name in targets) { const d = document.createElement("div"); d.className = "dot" + (piece ? " capture" : ""); el.appendChild(d); }
+    if (piece) el.appendChild(pieceGlyph(piece));
+    el.addEventListener("click", () => onSquare(name));
+    boardEl.appendChild(el);
+  }
+}
+
+function captured() {
+  // Compare current board to the full starting set to find captured pieces.
+  const start = { P:8,N:2,B:2,R:2,Q:1, p:8,n:2,b:2,r:2,q:1 };
+  const cur = {};
+  for (const pc of state.board) if (pc) cur[pc] = (cur[pc]||0)+1;
+  const missing = c => Math.max(0, (start[c]||0) - (cur[c]||0));
+  // pieces captured BY white = missing black pieces; BY black = missing white.
+  const byWhite = [], byBlack = [];
+  let scoreW = 0, scoreB = 0;
+  for (const k of ["q","r","b","n","p"]) {
+    for (let i=0;i<missing(k);i++){ byWhite.push(k); scoreW += VAL[k]; }
+    for (let i=0;i<missing(k.toUpperCase());i++){ byBlack.push(k); scoreB += VAL[k]; }
+  }
+  return { byWhite, byBlack, adv: scoreW - scoreB };
+}
+
+function renderCaptured() {
+  const c = captured();
+  const mk = (arr, cls) => arr.map(k => `<span class="piece ${cls}">${SOLID[k]}</span>`).join("");
+  const bottomWhite = !flipped;
+  // Each player's bar shows the opponent pieces they have captured.
+  const capByBottom = bottomWhite ? c.byWhite : c.byBlack;
+  const capByTop    = bottomWhite ? c.byBlack : c.byWhite;
+  const bottomCapCls = bottomWhite ? "b" : "w";
+  const topCapCls    = bottomWhite ? "w" : "b";
+  const topName    = bottomWhite ? "Black" : "White";
+  const bottomName = bottomWhite ? "White" : "Black";
+  const bottomAdv = bottomWhite ? c.adv : -c.adv;   // c.adv > 0 means White ahead
+  $("capTop").innerHTML =
+    `<span class="who">${topName}</span><span class="pcs">${mk(capByTop, topCapCls)}</span>` +
+    (bottomAdv < 0 ? `<span class="adv">+${-bottomAdv}</span>` : "");
+  $("capBot").innerHTML =
+    `<span class="who">${bottomName}</span><span class="pcs">${mk(capByBottom, bottomCapCls)}</span>` +
+    (bottomAdv > 0 ? `<span class="adv">+${bottomAdv}</span>` : "");
+}
+
+function renderMoves() {
+  const h = state.history || [];
+  const box = $("moves");
+  if (!h.length) { box.innerHTML = '<div class="empty">No moves yet</div>'; return; }
+  let rows = "";
+  for (let i = 0; i < h.length; i += 2) {
+    const n = i/2 + 1;
+    const w = h[i] || "";
+    const b = h[i+1] || "";
+    rows += `<tr><td class="n">${n}.</td><td class="san">${w}</td><td class="san">${b}</td></tr>`;
+  }
+  box.innerHTML = `<table>${rows}</table>`;
+  box.scrollTop = box.scrollHeight;
+}
+
+function renderPromo() {
+  const p = $("promo");
+  p.querySelectorAll("button").forEach(b => b.remove());
+  if (!pendingPromo) { p.classList.remove("active"); return; }
+  const white = state.side_to_move === "w";
+  for (const k of ["q","r","b","n"]) {
+    const btn = document.createElement("button");
+    btn.innerHTML = `<span class="${white?'w':'b'}">${SOLID[k]}</span>`;
+    btn.addEventListener("click", async () => {
+      const uci = pendingPromo.from + pendingPromo.to + k;
+      pendingPromo = null; renderPromo();
+      setState(await api("/api/move", { uci }));
+    });
+    p.appendChild(btn);
+  }
+  p.classList.add("active");
+}
+
+function updatePanel() {
+  const s = state;
+  const turn = $("turn");
+  turn.classList.toggle("black", s.side_to_move === "b");
+  $("turnLabel").textContent = s.over ? "Game over" : (s.side_to_move === "w" ? "White to move" : "Black to move");
+  $("chk").textContent = (!s.over && s.in_check) ? "CHECK" : "";
+
+  const badges = [];
+  if (s.category) badges.push(`<span class="badge ${s.category!=='ongoing'?'hl':''}">${s.category.replace(/_/g,' ')}</span>`);
+  badges.push(`<span class="badge">move ${s.fullmove}</span>`);
+  badges.push(`<span class="badge">50-mv ${s.halfmove_clock}/100</span>`);
+  badges.push(`<span class="badge">reps ${s.repetition_count}</span>`);
+  $("meta").innerHTML = badges.join("");
+
+  let notice = "";
+  if (s.claimable && s.claimable.length) notice += `Claimable: ${s.claimable.map(x=>x.replace(/_/g,' ')).join(", ")}. `;
+  if (s.pending_draw_offer) notice += `Draw offered by ${s.pending_draw_offer==='w'?'White':'Black'}.`;
+  $("notice").textContent = notice;
+
+  $("claim3").disabled = !(s.claimable||[]).includes("threefold_repetition");
+  $("claim50").disabled = !(s.claimable||[]).includes("fifty_move");
+  $("accept").disabled = !s.pending_draw_offer || s.over;
+  $("decline").disabled = !s.pending_draw_offer || s.over;
+  $("resign").disabled = s.over;
+  $("offer").disabled = s.over;
+
+  const banner = $("banner");
+  if (s.over) {
+    const term = (s.termination||"").replace(/_/g," ");
+    let big = "Draw";
+    if (s.result === "1-0") big = "White wins";
+    else if (s.result === "0-1") big = "Black wins";
+    $("bannerBig").textContent = big + (s.result==="1/2-1/2" ? "" : " • " + s.result);
+    $("bannerSmall").textContent = "by " + term;
+    banner.classList.add("show");
+  } else banner.classList.remove("show");
+}
+
+function setState(s, keepErr) {
+  $("err").textContent = s.error || "";
+  state = s;
+  render(); renderCaptured(); renderMoves(); updatePanel();
+}
+
+function onSquare(name) {
+  $("err").textContent = "";
+  if (state.over || pendingPromo) return;
+  if (selected) {
+    const targets = legalTargetsFrom(selected);
+    if (name in targets) {
+      if (targets[name]) { pendingPromo = { from: selected, to: name }; selected = null; render(); renderPromo(); return; }
+      const uci = selected + name; selected = null;
+      api("/api/move", { uci }).then(setState);
+      return;
+    }
+  }
+  selected = state.legal.some(u => u.slice(0,2) === name) ? name : null;
+  render();
+}
+
+$("newGame").addEventListener("click", async () => { selected = null; pendingPromo = null; renderPromo(); setState(await api("/api/new", {})); });
+$("bannerNew").addEventListener("click", async () => { selected = null; setState(await api("/api/new", {})); });
+$("flip").addEventListener("click", () => { flipped = !flipped; render(); renderCaptured(); });
+$("resign").addEventListener("click", async () => setState(await api("/api/resign", { color: state.side_to_move })));
+$("claim3").addEventListener("click", async () => setState(await api("/api/claim", { reason: "threefold_repetition" })));
+$("claim50").addEventListener("click", async () => setState(await api("/api/claim", { reason: "fifty_move" })));
+$("offer").addEventListener("click", async () => setState(await api("/api/offer", { color: state.side_to_move })));
+$("accept").addEventListener("click", async () => setState(await api("/api/offer/accept", {})));
+$("decline").addEventListener("click", async () => setState(await api("/api/offer/decline", {})));
+
+(async () => setState(await api("/api/state")))();
+</script>
+</body>
+</html>

@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .coverage
+
+# Editor / tooling local config — not part of the project
+.claude/
+.vscode/
+.idea/
