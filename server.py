@@ -13,20 +13,93 @@ from __future__ import annotations
 
 import json
 import os
+import socket
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from chess import Game, GameOverError, IllegalMoveError
-from chess.constants import FILES, RANKS, WHITE, file_of, kind_of, rank_of, square_name
+from chess.constants import (
+    BLACK,
+    FILES,
+    RANKS,
+    WHITE,
+    file_of,
+    kind_of,
+    opposite,
+    rank_of,
+    square_name,
+)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEBAPP = os.path.join(HERE, "webapp")
 PORT = int(os.environ.get("CHESS_PORT", "8765"))
+# Bind to all interfaces by default so other devices on the same LAN can join;
+# set CHESS_HOST=127.0.0.1 to restrict to this machine only.
+HOST = os.environ.get("CHESS_HOST", "0.0.0.0")
 
 # A single shared game for this simple local server.
 GAME = Game()
 LAST_MOVE = {"frm": None, "to": None}
 HISTORY = []  # list of SAN strings, in play order
+VERSION = 0   # bumped on every state change so clients can live-sync
+
+# Players and clocks.
+PLAYERS = {"w": "White", "b": "Black"}
+TIMED = False
+BASE_MS = 0            # starting time per side, milliseconds
+INC_MS = 0             # increment per move, milliseconds
+CLOCK = {"w": 0, "b": 0}   # banked remaining time per side (ms)
+RUNNING = None         # colour whose clock is currently ticking, or None
+TURN_START = 0.0       # monotonic seconds when the running clock started
+
+
+def bump():
+    """Advance the state version so polling clients pick up the change."""
+    global VERSION
+    VERSION += 1
+
+
+def _remaining_ms(color):
+    """Live remaining time for *color*, or None when the game is untimed."""
+    if not TIMED:
+        return None
+    ms = CLOCK[color]
+    if RUNNING == color and not GAME.is_over():
+        ms -= (time.monotonic() - TURN_START) * 1000
+    return max(0, int(ms))
+
+
+def _check_timeout():
+    """End the game if the side to move has run out of time (FIDE 6.9)."""
+    global RUNNING
+    if not TIMED or GAME.is_over() or RUNNING is None:
+        return
+    if _remaining_ms(RUNNING) <= 0:
+        loser = RUNNING
+        winner = opposite(loser)
+        CLOCK[loser] = 0
+        RUNNING = None
+        GAME.termination = "timeout"
+        # 6.9: a flag-fall loses, unless the opponent cannot possibly mate,
+        # in which case the game is drawn.
+        if GAME._can_possibly_mate(winner):
+            GAME.result = "1-0" if winner == WHITE else "0-1"
+        else:
+            GAME.result = "1/2-1/2"
+        bump()
+
+
+def lan_ip() -> str:
+    """Best-effort LAN IP address of this machine (for the shareable link)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))  # no packets are actually sent
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 
 def san_of(game_before, move) -> str:
@@ -75,6 +148,7 @@ def san_of(game_before, move) -> str:
 
 
 def state_dict() -> dict:
+    _check_timeout()  # flag-fall may end the game even without a move
     g = GAME
     status = g.status()
     king_sq = None
@@ -99,6 +173,13 @@ def state_dict() -> dict:
         "pending_draw_offer": g.pending_draw_offer,
         "last_move": LAST_MOVE,
         "history": list(HISTORY),
+        "version": VERSION,
+        "players": dict(PLAYERS),
+        "timed": TIMED,
+        "base_ms": BASE_MS,
+        "inc_ms": INC_MS,
+        "clock": {"w": _remaining_ms("w"), "b": _remaining_ms("b")},
+        "running": RUNNING if (TIMED and not g.is_over()) else None,
     }
 
 
@@ -178,13 +259,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send_file(os.path.join(WEBAPP, "index.html"))
         elif path == "/api/state":
             self._send_json(state_dict())
+        elif path == "/api/info":
+            self._send_json({"lan_url": f"http://{lan_ip()}:{PORT}", "port": PORT})
         elif self._serve_static(path):
             return
         else:
             self.send_error(404)
 
     def do_POST(self):
-        global GAME, LAST_MOVE
+        global GAME, LAST_MOVE, PLAYERS, TIMED, BASE_MS, INC_MS, CLOCK, RUNNING, TURN_START
         path = urlparse(self.path).path
         data = self._read_json()
 
@@ -192,6 +275,21 @@ class Handler(BaseHTTPRequestHandler):
             GAME = Game()
             LAST_MOVE = {"frm": None, "to": None}
             HISTORY.clear()
+            white = (str(data.get("white") or "White").strip() or "White")[:24]
+            black = (str(data.get("black") or "Black").strip() or "Black")[:24]
+            PLAYERS = {"w": white, "b": black}
+            try:
+                minutes = float(data.get("minutes", 0) or 0)
+                inc = float(data.get("increment", 0) or 0)
+            except (TypeError, ValueError):
+                minutes, inc = 0, 0
+            TIMED = minutes > 0
+            BASE_MS = int(minutes * 60_000)
+            INC_MS = int(inc * 1000)
+            CLOCK = {"w": BASE_MS, "b": BASE_MS}
+            RUNNING = WHITE if TIMED else None
+            TURN_START = time.monotonic()
+            bump()
             self._send_json(state_dict())
             return
 
@@ -200,10 +298,28 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if GAME.is_over():
                     raise GameOverError("game is over")
+                _check_timeout()
+                if GAME.is_over():
+                    raise GameOverError("game is over")
+                mover = GAME.side_to_move
                 # Resolve + describe the move against the pre-move position.
                 probe = GAME._find_legal_move(*self._parse_uci(uci))
                 base = san_of(GAME, probe)
                 mv = GAME.push_uci(uci)
+                # Clocks: deduct the mover's elapsed time, add the increment,
+                # and start the opponent's clock (unless the game just ended).
+                if TIMED:
+                    elapsed = (time.monotonic() - TURN_START) * 1000
+                    CLOCK[mover] -= elapsed
+                    if CLOCK[mover] <= 0 and not GAME.is_over():
+                        CLOCK[mover] = 0
+                        RUNNING = mover
+                        _check_timeout()  # flag fell as the move was made
+                    else:
+                        if not GAME.is_over():
+                            CLOCK[mover] += INC_MS
+                        RUNNING = opposite(mover) if not GAME.is_over() else None
+                        TURN_START = time.monotonic()
                 # Add check / checkmate suffix from the resulting position.
                 if GAME.is_over() and GAME.termination == "checkmate":
                     base += "#"
@@ -211,6 +327,7 @@ class Handler(BaseHTTPRequestHandler):
                     base += "+"
                 HISTORY.append(base)
                 LAST_MOVE = {"frm": square_name(mv.frm), "to": square_name(mv.to)}
+                bump()
                 self._send_json(state_dict())
             except (IllegalMoveError, GameOverError, ValueError) as exc:
                 self._send_json({"error": str(exc), **state_dict()}, code=400)
@@ -220,6 +337,7 @@ class Handler(BaseHTTPRequestHandler):
             color = WHITE if data.get("color", "w") == "w" else "b"
             try:
                 GAME.resign(color)
+                bump()
                 self._send_json(state_dict())
             except GameOverError as exc:
                 self._send_json({"error": str(exc), **state_dict()}, code=400)
@@ -229,6 +347,8 @@ class Handler(BaseHTTPRequestHandler):
             reason = str(data.get("reason", ""))
             try:
                 ok = GAME.claim_draw(reason)
+                if ok:
+                    bump()
                 self._send_json({"claim_ok": ok, **state_dict()})
             except (GameOverError, ValueError) as exc:
                 self._send_json({"error": str(exc), **state_dict()}, code=400)
@@ -238,6 +358,7 @@ class Handler(BaseHTTPRequestHandler):
             color = WHITE if data.get("color", "w") == "w" else "b"
             try:
                 GAME.offer_draw(color)
+                bump()
                 self._send_json(state_dict())
             except (GameOverError, ValueError) as exc:
                 self._send_json({"error": str(exc), **state_dict()}, code=400)
@@ -246,6 +367,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/offer/accept":
             try:
                 GAME.accept_draw()
+                bump()
                 self._send_json(state_dict())
             except (GameOverError, ValueError) as exc:
                 self._send_json({"error": str(exc), **state_dict()}, code=400)
@@ -253,6 +375,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/offer/decline":
             GAME.decline_draw()
+            bump()
             self._send_json(state_dict())
             return
 
@@ -260,8 +383,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Chess engine server running at http://localhost:{PORT}")
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print("Chess engine server running.")
+    print(f"  On this computer:      http://localhost:{PORT}")
+    if HOST != "127.0.0.1":
+        print(f"  Share on your network: http://{lan_ip()}:{PORT}")
+        print("  (Both devices must be on the same Wi-Fi/LAN. Windows may show")
+        print("   a firewall prompt the first time — allow access on private")
+        print("   networks so others can connect.)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

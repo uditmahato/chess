@@ -85,13 +85,35 @@
   .banner .small { font-size: 13px; color: var(--muted); margin-top: 6px; }
   .banner button { margin-top: 16px; min-width: 160px; }
 
-  .cap { width: var(--bsize); display: flex; align-items: center; gap: 8px; min-height: 30px;
-         padding: 3px 10px; border-radius: 6px; background: var(--bg1); }
-  .cap .who { font-size: 10px; color: var(--muted); text-transform: uppercase;
-              letter-spacing: .5px; font-weight: 700; width: 42px; }
-  .cap .pcs { display: flex; align-items: center; }
-  .cap .pcs img { width: 19px; height: 19px; margin-right: -5px; }
-  .cap .adv { margin-left: auto; font-size: 12px; color: var(--accent); font-weight: 700; }
+  .cap { width: var(--bsize); display: flex; align-items: center; gap: 6px; min-height: 34px;
+         padding: 4px 10px; border-radius: 6px; background: var(--bg1); }
+  .cap .name { font-size: 13.5px; font-weight: 700; max-width: 160px; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+  .cap .pcs { display: flex; align-items: center; margin-left: 2px; }
+  .cap .pcs img { width: 18px; height: 18px; margin-right: -5px; }
+  .cap .adv { font-size: 12px; color: var(--accent); font-weight: 700; margin-left: 4px; }
+  .cap .clock { margin-left: auto; font-family: ui-monospace, "SF Mono", monospace;
+                font-size: 19px; font-weight: 700; color: #cbc6bd; background: #1b1917;
+                border-radius: 6px; padding: 2px 12px; min-width: 82px; text-align: center;
+                letter-spacing: .5px; }
+  .cap .clock.run { color: #fff; box-shadow: inset 0 0 0 2px var(--accent); }
+  .cap .clock.low.run { color: #ff6b5c; box-shadow: inset 0 0 0 2px #ff6b5c; }
+
+  /* setup modal */
+  .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center;
+           justify-content: center; padding: 16px; background: rgba(10,10,8,.72); }
+  .modal.hidden { display: none; }
+  .card { background: var(--panel); border-radius: 14px; padding: 22px; width: min(94vw, 380px);
+          display: flex; flex-direction: column; gap: 13px; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
+  .card h2 { margin: 0 0 2px; font-size: 19px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .field input, .field select { background: #1b1917; border: 1px solid var(--line); color: var(--text);
+          border-radius: 8px; padding: 9px 10px; font-size: 14px; width: 100%; }
+  .colorpick { display: flex; gap: 8px; }
+  .colorpick button { background: #1b1917; border: 1px solid var(--line); }
+  .colorpick button.active { background: var(--accent); color: #17240a; border-color: var(--accent); }
+  .custom-tc { flex-direction: row; gap: 10px; }
 
   /* ---- Panel ---- */
   .panel { width: 320px; background: var(--panel); border-radius: 10px; padding: 14px;
@@ -137,6 +159,16 @@
   button.toggle.on { background: var(--accent); color: #17240a; }
   button:disabled { opacity: .4; cursor: default; }
   .hint-text { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .live { margin-left: auto; font-size: 11px; color: var(--accent); display: flex; align-items: center; gap: 5px; }
+  .live .dot-live { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 rgba(129,182,76,.6); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(129,182,76,.5)} 70%{box-shadow:0 0 0 6px rgba(129,182,76,0)} 100%{box-shadow:0 0 0 0 rgba(129,182,76,0)} }
+  .share { background: var(--panel2); border-radius: 8px; padding: 10px; font-size: 12px; display: none; flex-direction: column; gap: 6px; }
+  .share.on { display: flex; }
+  .share .lbl { color: var(--muted); font-size: 11px; }
+  .share .lnk { display: flex; gap: 6px; }
+  .share input { flex: 1; background: #1d1b19; border: 1px solid var(--line); color: var(--text);
+                 border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: ui-monospace, monospace; }
+  .share button { flex: 0 0 auto; padding: 6px 10px; }
 
   @media (max-width: 900px) {
     .app { flex-direction: column; align-items: center; }
@@ -146,6 +178,47 @@
 </style>
 </head>
 <body>
+  <div class="modal hidden" id="setup">
+    <div class="card">
+      <h2>New game</h2>
+      <div class="field">
+        <label>Player 1 name</label>
+        <input id="pName1" maxlength="24" value="Player 1" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Player 1 plays</label>
+        <div class="colorpick" id="colorPick">
+          <button data-c="w" class="active">♔ White</button>
+          <button data-c="b">♚ Black</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Player 2 name</label>
+        <input id="pName2" maxlength="24" value="Player 2" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Time control</label>
+        <select id="tc">
+          <option value="0+0">No clock</option>
+          <option value="1+0">1 min</option>
+          <option value="3+2">3 | 2 (blitz)</option>
+          <option value="5+0">5 min</option>
+          <option value="10+0" selected>10 min</option>
+          <option value="15+10">15 | 10 (rapid)</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </div>
+      <div class="field custom-tc" id="customTC" style="display:none">
+        <div class="field" style="flex:1"><label>Minutes</label><input id="tcMin" type="number" min="0" step="0.5" value="10" /></div>
+        <div class="field" style="flex:1"><label>Increment (s)</label><input id="tcInc" type="number" min="0" step="1" value="0" /></div>
+      </div>
+      <div class="row">
+        <button id="startGame" class="primary">Start game</button>
+        <button id="cancelSetup">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <header>
     <h1>♟ Chess Engine — live test board</h1>
     <p>Every move drives the real Python engine (FIDE rules).</p>
@@ -169,6 +242,7 @@
         <span class="swatch"></span>
         <span class="label" id="turnLabel">White to move</span>
         <span class="chk" id="chk"></span>
+        <span class="live" id="live" title="Live sync on — moves update automatically"><span class="dot-live"></span>Live</span>
       </div>
       <div class="meta" id="meta"></div>
       <div class="notice" id="notice"></div>
@@ -200,6 +274,15 @@
         <button id="decline" disabled>Decline</button>
       </div>
       <div class="hint-text">Click a piece, then a target square. Toggle <b>Hints</b> to show/hide legal-move dots.</div>
+
+      <div class="share" id="share">
+        <span class="lbl">Play with someone on your network — share this link:</span>
+        <div class="lnk">
+          <input id="shareUrl" readonly />
+          <button id="copyShare">Copy</button>
+        </div>
+        <span class="lbl">Both devices must be on the same Wi-Fi. You share one board and take turns; moves sync live.</span>
+      </div>
     </div>
   </div>
 
@@ -208,6 +291,13 @@ const VAL = { p:1, n:3, b:3, r:5, q:9 };
 const FILES = "abcdefgh";
 let state = null, selected = null, flipped = false, pendingPromo = null;
 let showHints = (localStorage.getItem("chessHints") ?? "1") === "1";
+let appliedVersion = -1;
+let clockBase = { w: null, b: null }, clockAt = 0, running = null, timed = false;
+let playersState = { w: "White", b: "Black" }, timeoutPolled = false, p1Color = "w";
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+}
 
 const $ = id => document.getElementById(id);
 const boardEl = $("board");
@@ -273,18 +363,49 @@ function captured() {
   }
   return { byWhite, byBlack, adv: sW - sB };
 }
-function renderCaptured() {
+function renderPlayers() {
   const c = captured();
   const mk = arr => arr.map(k => `<img src="/pieces/${pieceKey(k)}.svg" alt="">`).join("");
   const bottomWhite = !flipped;
-  const capByBottom = bottomWhite ? c.byWhite : c.byBlack;
-  const capByTop    = bottomWhite ? c.byBlack : c.byWhite;
-  const topName    = bottomWhite ? "Black" : "White";
-  const bottomName = bottomWhite ? "White" : "Black";
-  const bottomAdv = bottomWhite ? c.adv : -c.adv;
-  $("capTop").innerHTML = `<span class="who">${topName}</span><span class="pcs">${mk(capByTop)}</span>` + (bottomAdv < 0 ? `<span class="adv">+${-bottomAdv}</span>` : "");
-  $("capBot").innerHTML = `<span class="who">${bottomName}</span><span class="pcs">${mk(capByBottom)}</span>` + (bottomAdv > 0 ? `<span class="adv">+${bottomAdv}</span>` : "");
+  const botColor = bottomWhite ? "w" : "b";
+  const topColor = bottomWhite ? "b" : "w";
+  const strip = color => {
+    const capBy = color === "w" ? c.byWhite : c.byBlack;
+    const adv = color === "w" ? c.adv : -c.adv;
+    const name = playersState[color] || (color === "w" ? "White" : "Black");
+    const clock = timed ? `<span class="clock" id="clock-${color}">--:--</span>` : "";
+    return `<span class="name">${escapeHtml(name)}</span><span class="pcs">${mk(capBy)}</span>`
+      + (adv > 0 ? `<span class="adv">+${adv}</span>` : "") + clock;
+  };
+  $("capTop").innerHTML = strip(topColor);
+  $("capBot").innerHTML = strip(botColor);
+  updateClocks();
 }
+
+function fmtClock(ms) {
+  const t = Math.max(0, ms);
+  const m = Math.floor(t / 60000);
+  const s = Math.floor((t % 60000) / 1000);
+  if (t < 20000) return `${m}:${String(s).padStart(2, "0")}.${Math.floor((t % 1000) / 100)}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function updateClocks() {
+  if (!timed || !state) return;
+  for (const color of ["w", "b"]) {
+    const el = document.getElementById("clock-" + color);
+    if (!el) continue;
+    let ms = clockBase[color] ?? 0;
+    const active = running === color && !state.over;
+    if (active) ms -= performance.now() - clockAt;
+    if (ms < 0) ms = 0;
+    el.textContent = fmtClock(ms);
+    el.classList.toggle("run", active);
+    el.classList.toggle("low", ms < 10000);
+    if (ms <= 0 && active && !timeoutPolled) { timeoutPolled = true; poll(); }
+  }
+}
+setInterval(updateClocks, 200);
 
 function renderMoves() {
   const h = state.history || [];
@@ -353,8 +474,46 @@ function updatePanel() {
 function setState(s) {
   $("err").textContent = s.error || "";
   state = s;
-  render(); renderCaptured(); renderMoves(); updatePanel();
+  if (typeof s.version === "number") appliedVersion = s.version;
+  if (s.players) playersState = s.players;
+  clockBase = s.clock || { w: null, b: null };
+  clockAt = performance.now();
+  running = s.running;
+  timed = !!s.timed;
+  timeoutPolled = false;
+  render(); renderPlayers(); renderMoves(); updatePanel();
 }
+
+// Live sync: poll for changes made by the other player and apply them.
+async function poll() {
+  if (pendingPromo) return;               // don't disrupt a promotion choice
+  try {
+    const s = await api("/api/state");
+    if (typeof s.version === "number" && s.version !== appliedVersion) {
+      selected = null;                    // the board changed under us
+      setState(s);
+    }
+  } catch (e) { /* ignore transient network errors */ }
+}
+setInterval(poll, 1000);
+
+// Shareable LAN link.
+async function loadShare() {
+  try {
+    const info = await api("/api/info");
+    if (info && info.lan_url) {
+      $("shareUrl").value = info.lan_url;
+      $("share").classList.add("on");
+    }
+  } catch (e) {}
+}
+$("copyShare").addEventListener("click", () => {
+  const inp = $("shareUrl");
+  inp.select();
+  navigator.clipboard?.writeText(inp.value).catch(() => document.execCommand("copy"));
+  const b = $("copyShare"); const t = b.textContent; b.textContent = "Copied!";
+  setTimeout(() => (b.textContent = t), 1200);
+});
 
 function onSquare(name) {
   $("err").textContent = "";
@@ -374,9 +533,9 @@ function onSquare(name) {
 
 function syncHintsBtn() { $("hints").classList.toggle("on", showHints); $("hints").textContent = showHints ? "Hints ✓" : "Hints"; }
 
-$("newGame").addEventListener("click", async () => { selected=null; pendingPromo=null; renderPromo(); setState(await api("/api/new", {})); });
-$("bannerNew").addEventListener("click", async () => { selected=null; setState(await api("/api/new", {})); });
-$("flip").addEventListener("click", () => { flipped = !flipped; render(); renderCaptured(); });
+$("newGame").addEventListener("click", openSetup);
+$("bannerNew").addEventListener("click", openSetup);
+$("flip").addEventListener("click", () => { flipped = !flipped; render(); renderPlayers(); });
 $("hints").addEventListener("click", () => { showHints = !showHints; localStorage.setItem("chessHints", showHints ? "1":"0"); syncHintsBtn(); render(); });
 $("resign").addEventListener("click", async () => setState(await api("/api/resign", { color: state.side_to_move })));
 $("claim3").addEventListener("click", async () => setState(await api("/api/claim", { reason: "threefold_repetition" })));
@@ -385,8 +544,41 @@ $("offer").addEventListener("click", async () => setState(await api("/api/offer"
 $("accept").addEventListener("click", async () => setState(await api("/api/offer/accept", {})));
 $("decline").addEventListener("click", async () => setState(await api("/api/offer/decline", {})));
 
+// ---- Setup modal (names, colours, time control) ----
+function openSetup() {
+  $("setup").classList.remove("hidden");
+  $("pName1").focus(); $("pName1").select();
+}
+function closeSetup() { $("setup").classList.add("hidden"); }
+document.querySelectorAll("#colorPick button").forEach(b => b.addEventListener("click", () => {
+  p1Color = b.dataset.c;
+  document.querySelectorAll("#colorPick button").forEach(x => x.classList.toggle("active", x === b));
+}));
+$("tc").addEventListener("change", () => {
+  $("customTC").style.display = $("tc").value === "custom" ? "flex" : "none";
+});
+$("startGame").addEventListener("click", async () => {
+  const n1 = $("pName1").value.trim() || "Player 1";
+  const n2 = $("pName2").value.trim() || "Player 2";
+  const white = p1Color === "w" ? n1 : n2;
+  const black = p1Color === "w" ? n2 : n1;
+  let minutes = 0, increment = 0;
+  const v = $("tc").value;
+  if (v === "custom") { minutes = parseFloat($("tcMin").value) || 0; increment = parseFloat($("tcInc").value) || 0; }
+  else { const p = v.split("+").map(Number); minutes = p[0] || 0; increment = p[1] || 0; }
+  closeSetup(); selected = null; pendingPromo = null; renderPromo();
+  setState(await api("/api/new", { white, black, minutes, increment }));
+});
+$("cancelSetup").addEventListener("click", closeSetup);
+
 syncHintsBtn();
-(async () => setState(await api("/api/state")))();
+loadShare();
+(async () => {
+  setState(await api("/api/state"));
+  // On a brand-new, unconfigured server, prompt the host to set up the game.
+  if (!state.history.length && !state.timed
+      && state.players.w === "White" && state.players.b === "Black") openSetup();
+})();
 </script>
 </body>
 </html>
