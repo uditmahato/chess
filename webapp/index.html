@@ -49,20 +49,25 @@
     position: relative;
     width: var(--bsize);
     aspect-ratio: 1 / 1;
-    display: grid; grid-template-columns: repeat(8, 1fr);
+    /* Explicit equal rows AND columns so every square is truly square,
+       regardless of whether a cell holds a piece. */
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
     border-radius: 4px; overflow: hidden;
     box-shadow: 0 10px 34px rgba(0,0,0,.45);
     touch-action: manipulation; user-select: none;
   }
-  .sq { position: relative; display: flex; align-items: center; justify-content: center; }
+  .sq { position: relative; min-width: 0; min-height: 0; overflow: hidden;
+        display: flex; align-items: center; justify-content: center; }
   .sq.light { background: var(--light); }
   .sq.dark  { background: var(--dark); }
   .sq.hint { cursor: pointer; }
   .sq.sel::after { content:""; position:absolute; inset:0; background: var(--sel); }
   .sq.last::before { content:""; position:absolute; inset:0; background: var(--last); }
   .sq.check::after { content:""; position:absolute; inset:0; background: var(--check); z-index: 0; }
-  .piece { position: relative; z-index: 2; width: 92%; height: 92%; pointer-events: none;
-           -webkit-user-drag: none; user-select: none; }
+  .piece { position: relative; z-index: 2; width: 92%; height: 92%; object-fit: contain;
+           pointer-events: none; -webkit-user-drag: none; user-select: none; }
   .dot { position: absolute; z-index: 1; width: 32%; height: 32%; border-radius: 50%; background: var(--dot); }
   .dot.capture { width: 92%; height: 92%; background: transparent; border-radius: 50%;
                  border: 7px solid var(--ring); box-sizing: border-box; }
